@@ -52,7 +52,7 @@ input[type=number]{width:90px}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--grey);flex:none}
 .dot.ok{background:var(--green)} .dot.busy{background:var(--yellow);animation:pulse 1s infinite} .dot.err{background:var(--red)}
 @keyframes pulse{50%{opacity:.35}}
-.progress{height:8px;background:var(--panel2);border-radius:99px;overflow:hidden;margin-top:8px;display:none}
+.progress{height:8px;background:var(--panel2);border-radius:99px;overflow:hidden;margin-top:8px;visibility:hidden}
 .progress>div{height:100%;width:0;background:linear-gradient(90deg,var(--accent),#0ea5e9);transition:width .1s}
 .stageWrap{display:flex;justify-content:center}
 .stage{position:relative;background:#000;border-radius:14px;overflow:hidden;width:100%;max-width:100%}
@@ -97,8 +97,15 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:10px 0 0}
 .clubBar button{flex:none;min-width:48px;min-height:44px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit;font-weight:700;font-size:14px;cursor:pointer;scroll-snap-align:center;touch-action:manipulation}
 .clubBar button.on{background:var(--accent);border-color:var(--accent);color:#06210f}
 .clubTag{display:inline-block;background:#0c4a6e;color:#bae6fd;border-radius:99px;padding:1px 8px;font-size:11px;font-weight:800;margin-left:6px}
-.liveStatus{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
-.liveStatus b{font-size:15px}
+/* fixed-size status bar: its text changes many times a second during live capture, so nothing in it may change its height */
+.liveStatus{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:22px 40px;column-gap:10px;row-gap:4px;align-items:center;height:88px;overflow:hidden;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;contain:layout paint}
+.liveStatus b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.liveStatus #liveHint{grid-column:1/-1;font-size:13px;line-height:20px;max-height:40px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.liveStatus #camInfo{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw;text-align:right;font-variant-numeric:tabular-nums}
+#progText{min-height:20px;font-variant-numeric:tabular-nums}
+#fileInfo{flex:1 1 100%;min-width:0;min-height:20px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fileInfo:has(.err){white-space:normal}
+#liveStage{overflow-anchor:none}
 .recBadge{position:absolute;right:10px;top:10px;background:#dc2626;color:#fff;font-weight:800;font-size:12px;padding:4px 10px;border-radius:99px;animation:pulse 1s infinite}
 .swings{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
 .sw{display:flex;gap:10px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:8px;align-items:center}
@@ -107,8 +114,11 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:10px 0 0}
 .sw .info{font-size:13px;flex:1;min-width:0}
 .sw .info b{display:block;font-size:14px}
 .sw .acts{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
-.sw a{font-size:12px}
+.sw a.btn{text-decoration:none}
+.sw .acts .btn{padding:6px 9px;min-height:36px;font-size:13px}
 .stage.marking{cursor:crosshair;outline:3px solid var(--accent)}
+.stage.adjusting{outline:3px solid #facc15}
+.stage.adjusting canvas{touch-action:none;cursor:grab}
 .viewInfo{font-size:12px;color:var(--muted);min-height:1em}
 .err{color:#fca5a5}
 footer{color:#5c7568;font-size:12px;text-align:center;margin-top:24px}
@@ -220,8 +230,8 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
         <button class="btn small danger" id="liveStop" type="button">Stop camera</button>
       </div>
     </div>
-    <div class="liveStatus"><span class="dot" id="liveDot"></span><b id="liveState">Starting camera…</b><span class="sub" id="liveHint"></span><span class="sub" id="camInfo" style="margin-left:auto"></span></div>
-    <div class="stageWrap"><div class="stage" id="liveStage" style="aspect-ratio:16/9">
+    <div class="liveStatus"><span class="dot" id="liveDot"></span><b id="liveState">Starting camera…</b><span class="sub" id="camInfo"></span><span class="sub" id="liveHint"></span></div>
+    <div class="stageWrap"><div class="stage" id="liveStage" style="aspect-ratio:9/16">
       <video id="live" playsinline muted autoplay></video>
       <canvas id="liveOverlay"></canvas>
       <div class="recBadge hidden" id="recBadge">● REC</div>
@@ -232,7 +242,14 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
       <label class="status"><input type="checkbox" id="speakOn" checked> 🔊 Spoken feedback</label>
       <button class="btn small" id="manualCap" type="button">Capture now (manual)</button>
     </div>
-    <h2 style="margin-top:16px">Captured swings</h2>
+  </section>
+
+  <section class="card hidden" id="swingsCard">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <h2 style="margin:0">Captured swings</h2>
+      <span class="sub" id="storeInfo"></span>
+    </div>
+    <div class="notice hidden" id="storeWarn" style="margin-bottom:10px"></div>
     <div class="swings" id="swingList"><p class="sub">No swings yet. Set up so your whole body is in frame, then settle into address.</p></div>
   </section>
 
@@ -241,7 +258,8 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
       <h2 style="margin:0">2 · Review</h2>
       <div class="row">
         <button class="btn small hidden" id="markBall" type="button" title="Down-the-line: tap the ball / clubhead at address to set the swing plane">🎯 Mark ball at address</button>
-        <button class="btn small hidden" id="clearBall" type="button">Clear mark</button>
+        <button class="btn small hidden" id="adjPlane" type="button" title="Down-the-line: drag the white dot onto the ball/clubhead and the yellow handle along your club shaft at address">✋ Adjust shaft line</button>
+        <button class="btn small hidden" id="clearBall" type="button">Reset plane</button>
         <label class="status"><input type="checkbox" id="showSkel" checked> Show skeleton &amp; guides</label>
       </div>
     </div>
@@ -269,7 +287,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
       <span><i style="background:var(--trail)"></i>Trail side</span>
       <span><i style="background:#f472b6"></i>Hand path (back)</span>
       <span><i style="background:#facc15"></i>Hand path (down)</span>
-      <span class="dtlOnly"><i style="background:rgba(61,220,132,.6)"></i>Plane zone (shaft ↔ shoulder plane)</span>
+      <span class="dtlOnly"><i style="background:rgba(61,220,132,.6)"></i>Plane zone (yellow: club shaft plane at its lie angle · red: shoulder plane)</span>
       <span><i style="background:#fff;opacity:.7"></i>Address head position / spine line</span>
       <span><span class="kbd">Space</span> play · <span class="kbd">←</span><span class="kbd">→</span> step</span>
     </div>
@@ -301,13 +319,16 @@ const WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${TASKS_V
 const MODEL_URL = m => `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${m}/float16/1/pose_landmarker_${m}.task`;
 
 const $ = id => document.getElementById(id);
-// length (m) and typical down-the-line shaft angle at address (deg from ground): rough averages
-const CLUBS = { // typical men's standard length (inches) and down-the-line shaft angle at address (deg from ground). Rough averages.
-  driver:{name:'Driver',short:'Dr',inch:45.5,lie:45}, '3w':{name:'3-wood',short:'3W',inch:43,lie:48}, '5w':{name:'5-wood',short:'5W',inch:42,lie:50},
-  hybrid:{name:'Hybrid',short:'Hy',inch:40.5,lie:52}, '3i':{name:'3-iron',short:'3i',inch:39,lie:54}, '4i':{name:'4-iron',short:'4i',inch:38.5,lie:55},
-  '5i':{name:'5-iron',short:'5i',inch:38,lie:56}, '6i':{name:'6-iron',short:'6i',inch:37.5,lie:57}, '7i':{name:'7-iron',short:'7i',inch:37,lie:58},
-  '8i':{name:'8-iron',short:'8i',inch:36.5,lie:59}, '9i':{name:'9-iron',short:'9i',inch:36,lie:60}, pw:{name:'Pitching wedge',short:'PW',inch:35.75,lie:61},
-  gw:{name:'Gap wedge',short:'GW',inch:35.5,lie:62}, sw:{name:'Sand wedge',short:'SW',inch:35.25,lie:62}, lw:{name:'Lob wedge',short:'LW',inch:35,lie:63} };
+// write text only when it actually changes (live capture updates these many times a second)
+const setText = (id, txt) => { const e=$(id); if(e && e.textContent!==txt) e.textContent=txt; };
+// Typical men's standard club length (inches) and lie angle (deg between shaft and ground with the sole flat).
+// Seen down-the-line, the shaft at address sits at about the lie angle, so this sets the default shaft-plane line.
+const CLUBS = {
+  driver:{name:'Driver',short:'Dr',inch:45.5,lie:58}, '3w':{name:'3-wood',short:'3W',inch:43,lie:58.5}, '5w':{name:'5-wood',short:'5W',inch:42,lie:59},
+  hybrid:{name:'Hybrid',short:'Hy',inch:40.5,lie:60}, '3i':{name:'3-iron',short:'3i',inch:39,lie:60}, '4i':{name:'4-iron',short:'4i',inch:38.5,lie:60.5},
+  '5i':{name:'5-iron',short:'5i',inch:38,lie:61}, '6i':{name:'6-iron',short:'6i',inch:37.5,lie:61.5}, '7i':{name:'7-iron',short:'7i',inch:37,lie:62},
+  '8i':{name:'8-iron',short:'8i',inch:36.5,lie:62.5}, '9i':{name:'9-iron',short:'9i',inch:36,lie:63}, pw:{name:'Pitching wedge',short:'PW',inch:35.75,lie:63.5},
+  gw:{name:'Gap wedge',short:'GW',inch:35.5,lie:64}, sw:{name:'Sand wedge',short:'SW',inch:35.25,lie:64}, lw:{name:'Lob wedge',short:'LW',inch:35,lie:64} };
 for(const c of Object.values(CLUBS)) c.len = c.inch*0.0254;
 const store = { get:(k,d)=>{ try{ const v=localStorage.getItem('gsa.'+k); return v===null?d:v; }catch(e){ return d; } }, set:(k,v)=>{ try{ localStorage.setItem('gsa.'+k,v); }catch(e){} } };
 const video = $('video'), overlay = $('overlay'), octx = overlay.getContext('2d');
@@ -317,7 +338,7 @@ const state = {
 };
 window.__golf = state; // for debugging/testing
 setTimeout(()=>{ window.__live = live; });
-queueMicrotask(()=>{ window.__golfApi = {recompute:()=>recompute(), makeThumbs:()=>makeThumbs()}; });
+queueMicrotask(()=>{ window.__golfApi = {recompute:()=>recompute(), recomputeMetrics:()=>recomputeMetrics(), makeThumbs:()=>makeThumbs(), speech:()=>state.results?speechFor(state.results):null, setClub:k=>setClub(k,true), quickAnalyze:(b,r)=>quickAnalyze(b,r)}; });
 
 /* ---------------- UI wiring ---------------- */
 function segInit(id, cb){
@@ -337,15 +358,18 @@ const curClub = ()=>CLUBS[state.club]||CLUBS['7i'];
 (function buildClubChips(){
   const box=$('clubChips');
   for(const [k,c] of Object.entries(CLUBS)){
-    const b=document.createElement('button'); b.type='button'; b.dataset.k=k; b.textContent=c.short; b.title=`${c.name} · ${c.inch}″`;
+    const b=document.createElement('button'); b.type='button'; b.dataset.k=k; b.textContent=c.short; b.title=`${c.name} · ${c.inch}″ · ${c.lie}° lie`;
     b.addEventListener('click', ()=>setClub(k, true)); box.appendChild(b);
   }
 })();
 function setClub(k, user){
   state.club=k; if(user) store.set('club',k);
-  document.querySelectorAll('#clubChips button').forEach(b=>{ const on=b.dataset.k===k; b.classList.toggle('on',on); if(on) b.scrollIntoView({block:'nearest',inline:'center'}); });
+  const strip=$('clubChips');
+  strip.querySelectorAll('button').forEach(b=>{ const on=b.dataset.k===k; b.classList.toggle('on',on);
+    if(on) strip.scrollLeft = Math.max(0, b.offsetLeft - strip.offsetLeft - (strip.clientWidth-b.offsetWidth)/2); }); // sideways only: scrollIntoView could also scroll the page
+  if(user){ state.shaftPt=null; if(state.ballSrc==='drag') state.ballPt=null; } // a dragged shaft line belongs to the previous club; a tapped ball mark stays
   if(user && state.currentSwing){ state.currentSwing.club=k; }
-  if(user && state.S && !state.analyzing){ recompute(); if(state.currentSwing){ saveSnapshot(state.currentSwing); renderSwingList(); } }
+  if(user && state.S && !state.analyzing){ recomputeMetrics(); if(state.currentSwing){ saveSnapshot(state.currentSwing); renderSwingList(); persistSwing(state.currentSwing); } }
 }
 setClub(state.club, false);
 $('heightIn').value = store.get('height',''); $('heightUnit').value = store.get('hunit','cm');
@@ -368,8 +392,8 @@ function say(text){
 function speechFor(res){
   const c=curClub(), parts=[c.name.replace('-',' ')+'.'];
   const pl=res.items.find(m=>m.key==='plane'), sp=res.items.find(m=>m.key==='speed'), tp=res.items.find(m=>m.key==='tempo');
-  if(res.planeSay) parts.push(res.planeSay);
-  else if(state.view==='faceon') parts.push('Face-on view, so swing plane is not measured. Film down the line for plane feedback.');
+  if(state.view==='dtl' && res.planeSay) parts.push(res.planeSay);
+  else parts.push('Face-on view, so swing plane is not measured. Film down the line for plane feedback.');
   if(tp) parts.push(`Tempo ${tp.ratio.toFixed(1)} to 1.`);
   if(sp && sp.mph) parts.push(`Estimated club speed ${Math.round(sp.mph)} miles per hour, ${sp.badge.toLowerCase()}.`);
   const reds=res.items.filter(m=>m.s==='red' && m.key!=='plane' && m.key!=='tempo').map(m=>m.title.split(' (')[0].toLowerCase());
@@ -415,16 +439,16 @@ loadModel($('modelSel').value);
 /* ---------------- Video loading ---------------- */
 let currentURL=null;
 const keepURLs = new Set();
-function loadVideoSrc(src, label){
+function loadVideoSrc(src, label, keepCards){
   if(currentURL && !keepURLs.has(currentURL)) URL.revokeObjectURL(currentURL);
   currentURL = src;
-  resetResults();
+  resetResults(keepCards);
   video.src = src; video.load();
   $('fileInfo').textContent = label || '';
 }
-function resetResults(){
-  state.frames=[]; state.S=null; state.phases=null; state.results=null; state.thumbsReady=false; state.ballPt=null;
-  $('resultsCard').classList.add('hidden'); $('metricsCard').classList.add('hidden');
+function resetResults(keepCards){
+  state.frames=[]; state.S=null; state.phases=null; state.results=null; state.thumbsReady=false; state.ballPt=null; state.shaftPt=null; state.liveSamples=null;
+  if(!keepCards){ $('resultsCard').classList.add('hidden'); $('metricsCard').classList.add('hidden'); }
   $('phaseTag').style.display='none';
 }
 async function fixDuration(){
@@ -446,15 +470,16 @@ video.addEventListener('loadedmetadata', async ()=>{
   $('tStart').max = $('tEnd').max = video.duration;
   const extra = video.duration>15 ? ' · long clip: consider trimming the range to one swing (Advanced options)' : '';
   $('fileInfo').textContent = ($('fileInfo').textContent ? $('fileInfo').textContent+' · ' : '') + `${video.videoWidth}×${video.videoHeight}, ${video.duration.toFixed(1)} s`+extra;
+  $('fileInfo').title = $('fileInfo').textContent;
   updateAnalyzeBtn(); draw();
   video.dispatchEvent(new Event('gsa-ready'));
 });
-function loadVideoAndWait(src,label){
+function loadVideoAndWait(src,label,keepCards){
   return new Promise((res,rej)=>{
     const ok=()=>{ cleanup(); res(); }, bad=()=>{ cleanup(); rej(new Error('video could not be decoded')); };
     const cleanup=()=>{ video.removeEventListener('gsa-ready',ok); video.removeEventListener('error',bad); };
     video.addEventListener('gsa-ready',ok); video.addEventListener('error',bad);
-    loadVideoSrc(src,label);
+    loadVideoSrc(src,label,keepCards);
   });
 }
 video.addEventListener('error', ()=>{
@@ -473,7 +498,7 @@ const live = { on:false, stream:null, facing:'environment', mode:'off', hist:[],
   sawTop:false, sawFast:false, lastFastT:0, peak:0, lastSeen:0, needReset:false, paused:false, swings:[], count:0, wake:null, stopTimer:null };
 const FAST = window.GSA_FAST || 1.6;      // hand speed (body-heights per second) that counts as a real swing
 function liveSet(mode, text, hint, dot){
-  live.mode=mode; $('liveState').textContent=text; $('liveHint').textContent=hint||''; $('liveDot').className='dot '+(dot||'');
+  live.mode=mode; setText('liveState',text); setText('liveHint',hint||''); const dc='dot '+(dot||''); if($('liveDot').className!==dc) $('liveDot').className=dc;
   $('recBadge').classList.toggle('hidden', mode!=='recording');
 }
 function beep(freq=880, dur=0.12){
@@ -485,7 +510,11 @@ async function startLive(){
   if(!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder){
     alert('Camera access is not available here. On phones the page must be opened over https (or localhost), not as a local file or plain http. You can still upload a video.'); return; }
   if(!state.landmarker){ alert('The pose model is still loading. Try again in a moment.'); return; }
-  $('liveCard').classList.remove('hidden'); $('liveCard').scrollIntoView({behavior:'smooth'});
+  const wasHidden = $('liveCard').classList.contains('hidden');
+  $('liveCard').classList.remove('hidden');
+  live.ratio = live.ratio || (window.innerHeight>window.innerWidth ? 9/16 : 16/9); // phones in portrait deliver portrait video
+  layoutAny($('liveStage'), liveC, live.ratio, true);
+  if(wasHidden) $('liveCard').scrollIntoView({behavior:'smooth', block:'start'});
   liveSet('starting','Starting camera…','','busy');
   try{
     const base = {width:{ideal:1280}, height:{ideal:720}, frameRate:{ideal:60, max:60}};
@@ -499,15 +528,16 @@ async function startLive(){
   }catch(e){ console.warn('60fps not applied', e); }
   const st = track.getSettings(); live.fps = Math.round(st.frameRate||30);
   $('fpsSel').value = live.fps>=50 ? '60' : '30';
-  live.camText = `${st.width||'?'}×${st.height||'?'} @ ${live.fps} fps${live.fps<50?' (60 fps not available)':''}`; $('camInfo').textContent = live.camText;
+  live.camText = `${st.width||'?'}×${st.height||'?'} @ ${live.fps} fps`; setText('camInfo', live.camText);
   populateCams(st.deviceId);
   liveV.srcObject = live.stream; await liveV.play().catch(()=>{});
   await new Promise(r=>{ if(liveV.videoWidth) r(); else liveV.addEventListener('loadedmetadata',r,{once:true}); });
-  layoutAny($('liveStage'), liveC, liveV.videoWidth/liveV.videoHeight);
+  live.ratio = liveV.videoWidth/liveV.videoHeight; layoutAny($('liveStage'), liveC, live.ratio);
   $('slowSel').value='1';
   try{ live.wake = await navigator.wakeLock?.request('screen'); }catch(e){}
   live.on=true; live.hist=[]; live.needReset=false; live.paused=false;
   liveSet('waiting','Waiting for golfer','Step back until your whole body is in frame, then settle into address.','');
+  renderSwingList();
   liveLoop();
 }
 async function populateCams(activeId){
@@ -519,7 +549,9 @@ async function populateCams(activeId){
   }catch(e){}
 }
 $('camSel').addEventListener('change', e=>{ live.deviceId=e.target.value; if(live.on){ stopLive(); startLive(); } });
-liveV.addEventListener('resize', ()=>{ if(live.on && liveV.videoWidth) layoutAny($('liveStage'), liveC, liveV.videoWidth/liveV.videoHeight); }); // portrait/landscape rotation
+liveV.addEventListener('resize', ()=>{ // portrait/landscape rotation; Android can fire this repeatedly with the same size
+  if(!live.on || !liveV.videoWidth) return; const r=liveV.videoWidth/liveV.videoHeight;
+  if(Math.abs(r-(live.ratio||0))>0.01){ live.ratio=r; layoutAny($('liveStage'), liveC, r); } });
 function stopLive(){
   live.on=false;
   if(live.rec && live.rec.state==='recording'){ live.discard=true; live.rec.stop(); }
@@ -544,7 +576,7 @@ function liveLoop(){
     try{ const r = state.landmarker.detectForVideo(liveV, ts); lm = r.landmarks?.[0]||null; }catch(e){ console.warn(e); }
     const nowS = performance.now()/1000;
     if((live.mode==='recording'||live.mode==='saving') && live.buf) live.buf.push({t:nowS-live.recStart, lm: lm ? lm.map(p=>({x:p.x,y:p.y,visibility:p.visibility??1})) : null});
-    if(!live.detT0){ live.detT0=nowS; live.detN=0; } live.detN++; if(nowS-live.detT0>2){ live.rate = live.detN/(nowS-(live.detT0||nowS)); live.detN=0; live.detT0=nowS; $('camInfo').dataset.rate = live.rate.toFixed(0); $('camInfo').textContent = (live.camText||'') + ` · tracking ${live.rate.toFixed(0)} fps` + (live.rate<15 && state.modelName!=='lite' ? ' (slow: pick the Lite model under Advanced options)' : ''); }
+    if(!live.detT0){ live.detT0=nowS; live.detN=0; } live.detN++; if(nowS-live.detT0>2){ live.rate = live.detN/(nowS-(live.detT0||nowS)); live.detN=0; live.detT0=nowS; $('camInfo').dataset.rate = live.rate.toFixed(0); setText('camInfo', (live.camText||'') + ` · ${live.rate.toFixed(0)} fps tracked`); $('camInfo').title = live.rate<15 && state.modelName!=='lite' ? 'Tracking is slow: pick the Lite model under Advanced options' : ''; }
     processLive(lm, nowS);
     drawLive(lm);
   }
@@ -584,11 +616,11 @@ function processLive(lm, now){
   const atAddress = f&&f.ok && f.hand.y > f.hipY && stillFor(0.6, 0.05);
 
   if(live.mode==='waiting'){
-    if(live.needReset){ if(!atAddress) live.needReset=false; else { $('liveHint').textContent='Move away from address to re-arm.'; return; } }
-    if(!f) $('liveHint').textContent='No golfer detected. Step into frame.';
-    else if(!f.ok) $('liveHint').textContent='Make sure your whole body (head to feet) is in frame and well lit.';
+    if(live.needReset){ if(!atAddress) live.needReset=false; else { setText('liveHint','Move away from address to re-arm.'); return; } }
+    if(!f) setText('liveHint','No golfer detected. Step into frame.');
+    else if(!f.ok) setText('liveHint','Make sure your whole body (head to feet) is in frame and well lit.');
     else if(atAddress) startRecording();
-    else $('liveHint').textContent='Ready. Settle into address and hold still for a moment.';
+    else setText('liveHint','Ready. Settle into address and hold still for a moment.');
   } else if(live.mode==='recording'){
     const el = now-live.recStart;
     if(f&&f.ok){
@@ -598,10 +630,10 @@ function processLive(lm, now){
     }
     if(live.sawFast){
       const since = now-live.lastFastT;
-      $('liveHint').textContent='Swing detected… hold your finish';
+      setText('liveHint','Swing detected… hold your finish');
       if((since>0.5 && stillFor(0.4,0.07)) || since>2.2 || (now-live.lastSeen>1.0 && since>0.4)) finishCapture(true);
     } else if(!live.manual){
-      $('liveHint').textContent = `Recording (${el.toFixed(0)} s). Swing when ready.`;
+      setText('liveHint', `Recording (${el.toFixed(0)} s). Swing when ready.`);
       if(el>12 || now-live.lastSeen>1.5) finishCapture(false); // no swing: discard and re-arm
     }
     if(el>25) finishCapture(live.sawFast||live.manual);
@@ -632,22 +664,25 @@ async function onRecStop(){
   const url = URL.createObjectURL(blob); keepURLs.add(url);
   const n = ++live.count;
   const buf = live.buf||[]; live.buf=null;
-  const sw = {n, url, club:state.club, when:new Date(), ext: blob.type.includes('mp4')?'mp4':'webm', snap:null, thumb:null, summary:'Not analysed yet'};
+  const sw = {id:`${Date.now()}-${n}`, n, url, blob, club:state.club, when:new Date(), ext: blob.type.includes('mp4')?'mp4':'webm', snap:null, thumb:null, summary:'Not analysed yet'};
   live.swings.unshift(sw); renderSwingList();
+  navigator.storage?.persist?.().catch(()=>{});
+  const firstSave = persistSwing(sw); // saved before analysis too, so leaving the app mid-analysis doesn't lose it
   live.needReset = true;
   if($('autoAnalyze').checked){
     live.paused=true; liveSet('analyzing','Analysing swing '+n+'…','The camera will re-arm when this finishes.','busy');
     try{
-      await loadVideoAndWait(url, `Swing ${n} (live capture)`);
+      await loadVideoAndWait(url, `Swing ${n} (live capture)`, true);
       state.currentSwing = sw;
       const dur = buf.length ? buf[buf.length-1].t : 0, rate = dur>0 ? buf.filter(f=>f.lm).length/dur : 0;
       if(rate>=(window.GSA_QUICK_MIN||12)){ quickAnalyze(buf, rate); if(state.phases) await makeThumbs(); }   // real-time path: landmarks tracked during capture
       else await analyze();                                                          // slow device: frame-by-frame pass
       saveSnapshot(sw);
-      if(state.results) say(speechFor(state.results)); else say('Swing captured, but I could not find the swing phases.');
+      if(state.results) say(speechFor(state.results)); else { say('Swing captured, but I could not find the swing phases.'); $('resultsCard').classList.add('hidden'); $('metricsCard').classList.add('hidden'); }
     }catch(e){ console.error(e); sw.summary='Could not analyse: '+(e.message||e); }
     renderSwingList();
     live.paused=false; live.hist=[];
+    await firstSave; persistSwing(sw);
   }
   if(live.on) liveSet('waiting','Ready for next swing','Settle into address when ready.','ok');
 }
@@ -665,60 +700,152 @@ function quickAnalyze(buf, rate){
     frames.push({t:Math.min(t, (video.duration||dur)-0.01), lm});
   }
   state.frames=frames; state.step=step; state.vw=video.videoWidth||liveV.videoWidth; state.vh=video.videoHeight||liveV.videoHeight;
+  state.liveSamples = buf.filter(f=>f.lm).map(f=>f.t); // real pose samples (the frames above are interpolated between them)
   recompute();
   $('progText').textContent = `Analysed instantly from live tracking (${Math.round(rate)} fps). Tap “Analyze swing” for a slower frame-by-frame pass.`;
 }
 function saveSnapshot(sw){
   if(!state.results) { sw.summary='No swing found in clip'; return; }
-  sw.snap = {frames:state.frames, step:state.step, vw:state.vw, vh:state.vh};
+  sw.snap = {frames:state.frames, step:state.step, vw:state.vw, vh:state.vh, liveSamples:state.liveSamples, ballPt:state.ballPt, shaftPt:state.shaftPt};
   const thumbs=[...document.querySelectorAll('#thumbs img')]; sw.thumb = thumbs[1]?.src || thumbs[0]?.src || null;
   const c={green:0,yellow:0,red:0}; state.results.items.forEach(m=>c[m.s]++);
   const tempo = state.results.items.find(m=>m.key==='tempo');
   const spd = state.results.items.find(m=>m.key==='speed');
-  sw.summary = `${spd?spd.val+' · ':''}${tempo?'Tempo '+tempo.val+' · ':''}${state.view==='faceon'?'Face-on':'DTL'} · 🟢${c.green} 🟡${c.yellow} 🔴${c.red}`;
+  const pl = state.results.items.find(m=>m.key==='plane');
+  sw.view = state.view; sw.speech = speechFor(state.results);
+  sw.resultsLite = state.results.items.map(m=>({key:m.key, title:m.title, val:m.val, s:m.s}));
+  sw.summary = `${pl?'Plane '+pl.val+' · ':''}${spd&&spd.mph?spd.val+' · ':''}${tempo?'Tempo '+tempo.val+' · ':''}${state.view==='faceon'?'Face-on':'DTL'} · 🟢${c.green} 🟡${c.yellow} 🔴${c.red}`;
 }
+const swingFileName = sw=>{ const d=sw.when, z=v=>String(v).padStart(2,'0');
+  return `swing-${sw.n}-${(CLUBS[sw.club]||CLUBS['7i']).short}-${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}.${sw.ext}`; };
+const canShareFiles = (()=>{ try{ return !!(navigator.share && navigator.canShare && navigator.canShare({files:[new File([new Blob(['x'],{type:'video/mp4'})],'t.mp4',{type:'video/mp4'})]})); }catch(e){ return false; } })();
 function renderSwingList(){
-  const box=$('swingList'); box.innerHTML='';
-  if(!live.swings.length){ box.innerHTML='<p class="sub">No swings yet.</p>'; return; }
+  const box=$('swingList'), frag=document.createDocumentFragment();
+  $('swingsCard').classList.toggle('hidden', !live.swings.length && !live.on);
+  if(!live.swings.length){ box.innerHTML='<p class="sub">No swings yet. Set up so your whole body is in frame, then settle into address.</p>'; return; }
   for(const sw of live.swings){
     const d=document.createElement('div'); d.className='sw'+(currentURL===sw.url?' active':'');
-    d.innerHTML = `${sw.thumb?`<img src="${sw.thumb}" alt="">`:'<img alt="">'}<div class="info"><b>Swing ${sw.n}<span class="clubTag">${(CLUBS[sw.club]||CLUBS['7i']).short}</span></b>${sw.when.toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})}<br><span class="sub">${sw.summary}</span>
-      <div class="acts"><button class="btn small" type="button">Review</button><a href="${sw.url}" download="swing-${sw.n}.${sw.ext}">Download</a></div></div>`;
-    d.querySelector('button').addEventListener('click', ()=>reviewSwing(sw));
-    box.appendChild(d);
+    const today = sw.when.toDateString()===new Date().toDateString();
+    const whenTxt = (today?'':sw.when.toLocaleDateString([], {month:'short',day:'numeric'})+' ') + sw.when.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+    d.innerHTML = `${sw.thumb?`<img src="${sw.thumb}" alt="">`:'<img alt="">'}<div class="info"><b>Swing ${sw.n}<span class="clubTag">${(CLUBS[sw.club]||CLUBS['7i']).short}</span></b>${whenTxt}<br><span class="sub">${sw.summary}</span>
+      <div class="acts"><button class="btn small" type="button" data-a="review">▶ Review</button><a class="btn small" data-a="save" href="${sw.url}" download="${swingFileName(sw)}">💾 Save to phone</a>${canShareFiles?'<button class="btn small" type="button" data-a="share">📤 Send for review</button>':''}<button class="btn small danger" type="button" data-a="del" title="Delete this swing" aria-label="Delete swing ${sw.n}">🗑</button></div></div>`;
+    d.querySelector('[data-a=review]').addEventListener('click', ()=>reviewSwing(sw));
+    d.querySelector('[data-a=share]')?.addEventListener('click', ()=>shareSwing(sw));
+    d.querySelector('[data-a=del]').addEventListener('click', ()=>deleteSwing(sw));
+    frag.appendChild(d);
   }
+  box.replaceChildren(frag);
+}
+async function shareSwing(sw){
+  const blob = sw.blob || await fetch(sw.url).then(r=>r.blob());
+  const file = new File([blob], swingFileName(sw), {type: blob.type || (sw.ext==='mp4'?'video/mp4':'video/webm')});
+  const club=(CLUBS[sw.club]||CLUBS['7i']).name;
+  const text=`Golf swing ${sw.n}: ${club}, ${sw.when.toLocaleString()}. ${sw.summary.replace(/[🟢🟡🔴]/gu,'')}${sw.speech?'\n'+sw.speech:''}`;
+  try{
+    if(navigator.canShare && !navigator.canShare({files:[file]})) throw new Error('This browser cannot share video files. Use “Save to phone” instead.');
+    await navigator.share({files:[file], title:`Golf swing ${sw.n} (${club})`, text});
+  }catch(e){ if(e.name!=='AbortError') alert('Could not share: '+(e.message||e)); }
+}
+async function deleteSwing(sw){
+  if(!confirm(`Delete swing ${sw.n}? This removes the clip and its analysis from this phone.`)) return;
+  live.swings = live.swings.filter(x=>x!==sw);
+  if(currentURL!==sw.url){ keepURLs.delete(sw.url); URL.revokeObjectURL(sw.url); }
+  if(state.currentSwing===sw) state.currentSwing=null;
+  await swingDB.del(sw.id); renderSwingList(); updateStorageInfo();
+}
+
+/* ---------------- Saved swings (IndexedDB: survives closing the app / reloads) ---------------- */
+const MAX_SWINGS = 30;
+const swingDB = {
+  db:null,
+  open(){ if(this.db) return this.db; this.db = new Promise((res,rej)=>{ if(!window.indexedDB) return rej(new Error('IndexedDB not available'));
+    const r=indexedDB.open('gsa-swings',1); r.onupgradeneeded=()=>{ r.result.createObjectStore('swings',{keyPath:'id'}); };
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); return this.db; },
+  async tx(mode, fn){ const db=await this.open(); return new Promise((res,rej)=>{ const t=db.transaction('swings',mode), st=t.objectStore('swings'); const out=fn(st);
+    t.oncomplete=()=>res(out?.result); t.onerror=()=>rej(t.error); t.onabort=()=>rej(t.error||new Error('aborted')); }); },
+  put(rec){ return this.tx('readwrite', st=>st.put(rec)); },
+  del(id){ return this.tx('readwrite', st=>st.delete(id)).catch(e=>console.warn(e)); },
+  all(){ return this.tx('readonly', st=>st.getAll()); },
+};
+function swingRecord(sw){ // what gets stored: the clip itself plus everything needed to show the analysis again
+  return {id:sw.id, n:sw.n, blob:sw.blob, ext:sw.ext, club:sw.club, view:sw.view||null, when:sw.when.getTime(), snap:sw.snap, thumb:sw.thumb, summary:sw.summary, speech:sw.speech||null, results:sw.resultsLite||null};
+}
+async function persistSwing(sw){
+  if(!sw.blob) return;
+  try{ await swingDB.put(swingRecord(sw)); sw.saved=true; }
+  catch(e){
+    console.warn('save failed', e);
+    if(e && (e.name==='QuotaExceededError' || /quota/i.test(e.message||''))){ // out of space: drop the oldest and try once more
+      await pruneSwings(Math.max(1, live.swings.length-5));
+      try{ await swingDB.put(swingRecord(sw)); sw.saved=true; }catch(e2){ storageWarn('Phone storage is full, so this swing is only kept until you close the app. Save it to your phone or delete old swings.'); }
+    } else storageWarn('Could not save this swing on the phone ('+(e.message||e)+'). Use “Save to phone” to keep it.');
+  }
+  await pruneSwings(MAX_SWINGS); updateStorageInfo();
+}
+async function pruneSwings(keep){
+  if(live.swings.length<=keep) return;
+  const drop = live.swings.slice(keep); live.swings = live.swings.slice(0,keep);
+  for(const sw of drop){ await swingDB.del(sw.id); if(currentURL!==sw.url){ keepURLs.delete(sw.url); URL.revokeObjectURL(sw.url); } }
+  renderSwingList();
+}
+function storageWarn(msg){ const w=$('storeWarn'); w.textContent=msg; w.classList.toggle('hidden', !msg); }
+async function updateStorageInfo(){
+  const n=live.swings.length; let txt = n ? `${n} saved on this phone (keeps the last ${MAX_SWINGS})` : '';
+  try{ const est = await navigator.storage?.estimate?.();
+    if(est && est.quota){ const free=est.quota-est.usage; txt += n ? ` · ${(est.usage/1048576).toFixed(0)} MB used` : '';
+      if(free < 150*1048576 || est.usage/est.quota > 0.85) storageWarn(`Storage is getting low (${(free/1048576).toFixed(0)} MB free for this app). Save the swings you want to keep to your phone and delete the rest, or older swings may not be saved.`);
+      else if(!/full|Could not/.test($('storeWarn').textContent)) storageWarn(''); } }catch(e){}
+  setText('storeInfo', txt);
+}
+async function loadSavedSwings(){
+  try{
+    const recs = (await swingDB.all()).sort((a,b)=>b.when-a.when);
+    for(const r of recs){
+      if(!r.blob) continue;
+      const url=URL.createObjectURL(r.blob); keepURLs.add(url);
+      live.swings.push({id:r.id, n:r.n, url, blob:r.blob, ext:r.ext, club:r.club, view:r.view, when:new Date(r.when), snap:r.snap, thumb:r.thumb, summary:r.summary||'', speech:r.speech, resultsLite:r.results, saved:true});
+    }
+    live.count = Math.max(live.count, ...live.swings.map(s=>s.n||0), 0);
+    if(live.swings.length>MAX_SWINGS) await pruneSwings(MAX_SWINGS);
+    renderSwingList(); updateStorageInfo();
+    if(live.swings.length) navigator.storage?.persist?.().catch(()=>{});
+  }catch(e){ console.warn('Could not load saved swings', e); }
 }
 async function reviewSwing(sw){
   if(state.analyzing) return;
   await loadVideoAndWait(sw.url, `Swing ${sw.n} (live capture)`);
   state.currentSwing = sw; setClub(sw.club, false);
   if(sw.snap){
-    Object.assign(state, {frames:sw.snap.frames, step:sw.snap.step, vw:sw.snap.vw, vh:sw.snap.vh});
+    Object.assign(state, {frames:sw.snap.frames, step:sw.snap.step, vw:sw.snap.vw, vh:sw.snap.vh, liveSamples:sw.snap.liveSamples||null, ballPt:sw.snap.ballPt||null, shaftPt:sw.snap.shaftPt||null});
     recompute(); if(state.phases) await makeThumbs();
-  } else { await analyze(); saveSnapshot(sw); }
+  } else { await analyze(); saveSnapshot(sw); persistSwing(sw); }
   renderSwingList();
   $('playerCard').scrollIntoView({behavior:'smooth'});
 }
 
 /* ---------------- Layout ---------------- */
-function layoutAny(stage, canvas, r){
-  const parentW = stage.parentElement.clientWidth, maxH = Math.max(260, window.innerHeight*0.72);
-  const w = Math.min(parentW, maxH*r);
-  stage.style.width = w+'px'; stage.style.aspectRatio = `${r}`;
-  const dpr = Math.min(2, window.devicePixelRatio||1);
-  canvas.width = Math.round(w*dpr); canvas.height = Math.round(w/r*dpr);
+// Viewport height used for sizing. On Android Chrome window.innerHeight changes every time the address bar slides
+// in or out while scrolling; sizing the video from it made the page jump, which moved the address bar again (a loop).
+// So the height is only re-read when the width changes (rotation), never for height-only resizes.
+const vp = { w: window.innerWidth, h: Math.max(window.innerHeight, document.documentElement.clientHeight||0) };
+function layoutAny(stage, canvas, r, noCanvas){
+  const parentW = stage.parentElement.clientWidth, maxH = Math.max(260, vp.h*0.72);
+  const w = Math.round(Math.min(parentW, maxH*r));
+  if(stage.style.width !== w+'px') stage.style.width = w+'px';
+  if(stage.style.aspectRatio !== `${r}`) stage.style.aspectRatio = `${r}`;
+  if(noCanvas) return;
+  const dpr = Math.min(2, window.devicePixelRatio||1), cw=Math.round(w*dpr), ch=Math.round(w/r*dpr);
+  if(canvas.width!==cw || canvas.height!==ch){ canvas.width = cw; canvas.height = ch; }
 }
 function layoutStage(ratio){
   const r = ratio || (video.videoWidth && video.videoHeight ? video.videoWidth/video.videoHeight : 16/9);
-  const stage=$('stage'), parentW = stage.parentElement.clientWidth;
-  const maxH = Math.max(260, window.innerHeight*0.72);
-  const w = Math.min(parentW, maxH*r);
-  stage.style.width = w+'px'; stage.style.aspectRatio = `${r}`;
-  const dpr = Math.min(2, window.devicePixelRatio||1);
-  overlay.width = Math.round(w*dpr); overlay.height = Math.round(w/r*dpr);
+  layoutAny($('stage'), overlay, r);
   draw();
 }
-window.addEventListener('resize', ()=>{ layoutStage(); drawChart(); if(live.on && liveV.videoWidth) layoutAny($('liveStage'), liveC, liveV.videoWidth/liveV.videoHeight); });
+window.addEventListener('resize', ()=>{
+  if(Math.abs(window.innerWidth-vp.w) < 2) return; // height-only change (address bar / keyboard): keep everything as is
+  vp.w = window.innerWidth; vp.h = window.innerHeight;
+  layoutStage(); drawChart(); if(live.on && liveV.videoWidth) layoutAny($('liveStage'), liveC, liveV.videoWidth/liveV.videoHeight); });
 
 /* ---------------- Playback controls ---------------- */
 const fmt = t => (t||0).toFixed(2);
@@ -738,16 +865,46 @@ $('scrub').addEventListener('input', e=>{ if(!state.hasVideo) return; video.paus
 video.addEventListener('seeked', draw);
 video.addEventListener('timeupdate', ()=>{ if(video.paused) draw(); });
 $('showSkel').addEventListener('change', draw);
-let marking=false;
-$('markBall').addEventListener('click', ()=>{ marking=!marking; video.pause(); $('stage').classList.toggle('marking',marking); $('markBall').textContent = marking ? 'Tap the ball in the video…' : '🎯 Mark ball at address'; if(marking && state.phases) video.currentTime=state.frames[state.phases.address].t; });
-$('clearBall').addEventListener('click', ()=>{ state.ballPt=null; if(state.S) recompute(); });
+let marking=false, adjusting=false, dragging=null, dragRaf=0;
+function setAdjusting(on){
+  adjusting=on; $('stage').classList.toggle('adjusting',on); $('adjPlane').textContent = on ? '✔ Done adjusting' : '✋ Adjust shaft line';
+  if(on){ setMarking(false); video.pause(); if(state.phases) video.currentTime=state.frames[state.phases.address].t; }
+  draw();
+}
+function setMarking(on){
+  marking=on; $('stage').classList.toggle('marking',on); $('markBall').textContent = on ? 'Tap the ball in the video…' : '🎯 Mark ball at address';
+  if(on){ if(adjusting) setAdjusting(false); video.pause(); if(state.phases) video.currentTime=state.frames[state.phases.address].t; }
+}
+$('markBall').addEventListener('click', ()=>setMarking(!marking));
+$('adjPlane').addEventListener('click', ()=>setAdjusting(!adjusting));
+$('clearBall').addEventListener('click', ()=>{ state.ballPt=null; state.shaftPt=null; if(state.S) recomputeMetrics(); });
+const toVideo = e=>{ const r=overlay.getBoundingClientRect(); return {x:(e.clientX-r.left)/r.width*state.vw, y:(e.clientY-r.top)/r.height*state.vh, pxPerCss: state.vw/r.width}; };
+function planeHandle(pl){ return {x:pl.ball.x+pl.dir.x*pl.lenSh*0.9, y:pl.ball.y+pl.dir.y*pl.lenSh*0.9}; }
 overlay.addEventListener('click', e=>{
   if(!marking || !state.vw) return;
-  const r=overlay.getBoundingClientRect();
-  state.ballPt = {x:(e.clientX-r.left)/r.width*state.vw, y:(e.clientY-r.top)/r.height*state.vh};
-  marking=false; $('stage').classList.remove('marking'); $('markBall').textContent='🎯 Mark ball at address';
-  if(state.S) recompute();
+  const p=toVideo(e); state.ballPt = {x:p.x, y:p.y}; state.ballSrc='tap';
+  setMarking(false);
+  if(state.S) recomputeMetrics();
 });
+overlay.addEventListener('pointerdown', e=>{
+  const pl=state.results?.plane; if(!adjusting || !pl || !state.vw) return;
+  const p=toVideo(e), hp=planeHandle(pl), grab=34*p.pxPerCss;
+  const dB=dist(p,pl.ball), dH=dist(p,hp);
+  if(Math.min(dB,dH) > grab) return;
+  e.preventDefault(); overlay.setPointerCapture(e.pointerId);
+  if(!state.ballPt) state.ballSrc='drag';
+  state.ballPt = {x:pl.ball.x, y:pl.ball.y}; state.shaftPt = {x:hp.x, y:hp.y}; // pin the current line, then move one end
+  dragging = dB<=dH ? 'ball' : 'shaft'; if(dragging==='ball') state.ballSrc='drag';
+});
+overlay.addEventListener('pointermove', e=>{
+  if(!dragging) return; e.preventDefault();
+  const p=toVideo(e);
+  if(dragging==='ball'){ const dx=p.x-state.ballPt.x, dy=p.y-state.ballPt.y; state.ballPt={x:p.x,y:p.y}; state.shaftPt={x:state.shaftPt.x+dx, y:state.shaftPt.y+dy}; } // move the line, keep its angle
+  else state.shaftPt={x:p.x,y:p.y};
+  if(!dragRaf) dragRaf=requestAnimationFrame(()=>{ dragRaf=0; recomputeMetrics(); });
+});
+const endDrag = ()=>{ if(!dragging) return; dragging=null; recomputeMetrics(); if(state.currentSwing && state.results){ saveSnapshot(state.currentSwing); persistSwing(state.currentSwing); } };
+overlay.addEventListener('pointerup', endDrag); overlay.addEventListener('pointercancel', endDrag);
 $('setStart').addEventListener('click', ()=>{ $('tStart').value = video.currentTime.toFixed(2); });
 $('setEnd').addEventListener('click', ()=>{ $('tEnd').value = video.currentTime.toFixed(2); });
 document.addEventListener('keydown', e=>{
@@ -792,14 +949,27 @@ function drawSkeleton(ctx, W, H, i, opts={}){
     const pl = state.results?.plane;
     if(state.view==='dtl' && pl){
       const ext=(o,p,k)=>({x:o.x+(p.x-o.x)*k, y:o.y+(p.y-o.y)*k});
-      const k = 2.6, a1=ext(pl.ball,pl.hands,k*pl.lenSh/pl.lenHands), a2=ext(pl.ball,pl.shoulder,k);
+      const k = 2.6, a1={x:pl.ball.x+pl.dir.x*k*pl.lenSh, y:pl.ball.y+pl.dir.y*k*pl.lenSh}, a2=ext(pl.ball,pl.shoulder,k);
       ctx.fillStyle='rgba(61,220,132,.13)'; ctx.beginPath(); ctx.moveTo(pl.ball.x*sx,pl.ball.y*sy); ctx.lineTo(a1.x*sx,a1.y*sy); ctx.lineTo(a2.x*sx,a2.y*sy); ctx.closePath(); ctx.fill();
       ctx.lineWidth=Math.max(1.5,lw*.8);
       ctx.strokeStyle='rgba(250,204,21,.9)'; ctx.beginPath(); ctx.moveTo(pl.ball.x*sx,pl.ball.y*sy); ctx.lineTo(a1.x*sx,a1.y*sy); ctx.stroke();
       ctx.strokeStyle='rgba(248,113,113,.9)'; ctx.beginPath(); ctx.moveTo(pl.ball.x*sx,pl.ball.y*sy); ctx.lineTo(a2.x*sx,a2.y*sy); ctx.stroke();
       ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(pl.ball.x*sx,pl.ball.y*sy,lw*2.2,0,Math.PI*2); ctx.fill();
-      ctx.font=`${Math.max(11,lw*5)}px system-ui`; ctx.fillStyle='rgba(255,255,255,.85)';
+      const fs=Math.max(12,lw*6); ctx.font=`600 ${fs}px system-ui`; ctx.fillStyle='rgba(255,255,255,.9)'; ctx.shadowColor='rgba(0,0,0,.85)'; ctx.shadowBlur=4;
       ctx.fillText(pl.marked?'ball (marked)':'ball (estimated)', pl.ball.x*sx+lw*3, pl.ball.y*sy-lw*3);
+      const hp = planeHandle(pl); // label + drag handle on the shaft line
+      ctx.fillStyle='rgba(250,204,21,.95)'; ctx.fillText(`${curClub().short} shaft plane ${pl.deg.toFixed(0)}°${pl.adjusted?' (adjusted)':''}`, hp.x*sx+lw*4, hp.y*sy+fs*0.4);
+      if(adjusting){
+        for(const [p,col] of [[pl.ball,'#ffffff'],[hp,'#facc15']]){ ctx.lineWidth=2; ctx.strokeStyle='#000'; ctx.fillStyle=col; ctx.globalAlpha=.9;
+          ctx.beginPath(); ctx.arc(p.x*sx,p.y*sy,Math.max(10,lw*5),0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.globalAlpha=1; }
+      }
+      // where the downswing hands were furthest from the backswing path (if the frame has been reached)
+      const wst = pl.worst; if(wst && Math.abs(wst.d)>=0.5 && P && i>=P.top){
+        ctx.strokeStyle = wst.d>0 ? '#f87171' : '#38bdf8'; ctx.lineWidth=Math.max(2,lw); ctx.setLineDash([3,3]);
+        ctx.beginPath(); ctx.moveTo(wst.b.x*sx,wst.b.y*sy); ctx.lineTo(wst.h.x*sx,wst.h.y*sy); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = ctx.strokeStyle; ctx.fillText(`${Math.abs(wst.d).toFixed(1)}″ ${wst.d>0?'outside':'inside'}`, Math.max(wst.h.x,wst.b.x)*sx+lw*3, wst.h.y*sy);
+      }
+      ctx.shadowBlur=0; ctx.shadowColor='transparent';
     }
     // hand path: backswing pink, downswing yellow
     ctx.lineWidth=lw;
@@ -865,7 +1035,7 @@ async function analyze(){
   let t0 = Math.max(0, +$('tStart').value||0), t1 = Math.min(video.duration, +$('tEnd').value||video.duration);
   if(t1-t0 < 0.5){ t0=0; t1=video.duration; }
   const n = Math.min(1800, Math.floor((t1-t0)*fps)+1);
-  $('prog').style.display='block'; const bar=$('prog').firstElementChild;
+  $('prog').style.visibility='visible'; const bar=$('prog').firstElementChild;
   const frames=[]; const started=performance.now(); let found=0;
   try{
     for(let k=0;k<n;k++){
@@ -897,7 +1067,7 @@ async function analyze(){
   }
   state.analyzing=false; updateAnalyzeBtn();
   if(state.phases){ video.currentTime = state.frames[state.phases.address].t; }
-  setTimeout(()=>{$('prog').style.display='none';}, 800);
+  setTimeout(()=>{$('prog').style.visibility='hidden';}, 800);
 }
 
 /* ---------------- Signal processing helpers ---------------- */
@@ -992,7 +1162,8 @@ function recompute(){
   if(!ph){ return; }
   const det = detectView(state.S, ph); state.viewDet = det;
   if(state.viewMode==='auto') state.view = det.view;
-  $('markBall').classList.toggle('hidden', state.view!=='dtl'); $('clearBall').classList.toggle('hidden', state.view!=='dtl' || !state.ballPt);
+  $('markBall').classList.toggle('hidden', state.view!=='dtl'); $('adjPlane').classList.toggle('hidden', state.view!=='dtl'); $('clearBall').classList.toggle('hidden', state.view!=='dtl' || !(state.ballPt||state.shaftPt));
+  if(state.view!=='dtl' && adjusting) setAdjusting(false);
   document.querySelectorAll('.dtlOnly').forEach(e=>e.classList.toggle('hidden', state.view!=='dtl'));
   $('viewInfo').textContent = state.viewMode==='auto'
     ? `Auto-detected: ${det.view==='faceon'?'Face-on':'Down-the-line'}${det.sure?'':' (unsure, camera may be at an angle; tap to override)'}`
@@ -1002,6 +1173,13 @@ function recompute(){
   $('resultsCard').classList.remove('hidden'); $('metricsCard').classList.remove('hidden');
   if(state.thumbsReady) makeThumbs();
   drawChart(); draw();
+}
+// Re-run only the metrics (club change, ball mark, shaft-line drag): no thumbnail re-render, no re-smoothing
+function recomputeMetrics(){
+  if(!state.S || !state.phases){ if(state.frames.length) recompute(); return; }
+  state.results = computeMetrics(state.S, state.phases);
+  $('clearBall').classList.toggle('hidden', state.view!=='dtl' || !(state.ballPt||state.shaftPt));
+  renderMetrics(state.results, state.phases); draw();
 }
 // Camera view: in face-on the shoulders & hips are spread across the image; down-the-line they overlap.
 function detectView(S, P){
@@ -1013,6 +1191,28 @@ function detectView(S, P){
   const r = median(rs);
   return { view: r>0.38 ? 'faceon' : 'dtl', ratio:r, sure: r<0.28 || r>0.48 };
 }
+// Down-the-line plane geometry at address: ball, hands, shoulder and the shaft-line direction (unit vector from ball up toward the hands)
+function planeGeometry(S, P, ballSign){
+  const A=S[P.address], club=curClub();
+  const feet=[27,28,29,30,31,32].map(k=>A[k].y), ground=Math.max(...feet);
+  const hands=handMid(A), shoulder=mid(A[11],A[12]);
+  const hg=golferHeightM(), bhPx=Math.abs(mid(A[27],A[28]).y-A[0].y)||P.bh, inPerPx = 0.89*hg.m/bhPx/0.0254; // nose-to-ankle ≈ 0.89 × height
+  const lie = club.lie*Math.PI/180, lieDir = {x:-ballSign*Math.cos(lie), y:-Math.sin(lie)};
+  let ball, dir, marked=false, adjusted=false, src;
+  if(state.ballPt){ ball=state.ballPt; marked=true; }
+  if(state.ballPt && state.shaftPt){ dir=unit(state.shaftPt.x-ball.x, state.shaftPt.y-ball.y); adjusted=true; src='adjusted by you'; }
+  else if(state.ballPt){ dir=unit(hands.x-ball.x, hands.y-ball.y); src='marked ball through your hands at address'; }
+  else {
+    // ball/clubhead: down the club's lie angle from the hands, at a distance between "reaches the ground" and the club's length
+    dir = lieDir;
+    const dGround = Math.max(10, ground-hands.y)/Math.sin(lie), dLen = (club.inch-3)/inPerPx;
+    const d = (dGround + dLen)/2;
+    ball = {x:hands.x - dir.x*d, y:hands.y - dir.y*d};
+    src = `${club.name} lie ${club.lie}°, through your hands at address`;
+  }
+  return {ball, hands, shoulder, dir, lenS:dist(ball,shoulder)||1, inPerPx, hg, marked, adjusted, src};
+}
+function unit(x,y){ const l=Math.hypot(x,y)||1; return {x:x/l, y:y/l}; }
 function visOf(p, idxs){ return Math.min(...idxs.map(k=>p[k].v)); }
 function computeMetrics(S, P){
   const {L,T} = sides(), view=state.view, slow=+$('slowSel').value;
@@ -1105,54 +1305,75 @@ function computeMetrics(S, P){
     out.push({key:'hipSway', title:'Hip sway (address → top)', val:`${sway>=0?'+':''}${sway.toFixed(0)}%`, detail:`Pelvis side-shift as % of shoulder width (+ = toward target).`, s, msg, tip, conf:visOf(Tp,[23,24])});
   }
 
-  // Swing plane (down-the-line, hand-path proxy)
+  // Swing plane (down-the-line, hand-path based: the club itself isn't tracked)
   if(view==='dtl'){
-    const club = curClub();
-    const feet=[27,28,29,30,31,32].map(k=>A[k].y), ground=Math.max(...feet);
-    const hands=handMid(A), shoulder=mid(A[11],A[12]);
-    let ball, marked=false;
-    if(state.ballPt){ ball=state.ballPt; marked=true; }
-    else { const dy=Math.max(10, ground-hands.y); ball={x:hands.x + ballSign*dy/Math.tan(club.lie*Math.PI/180), y:ground}; }
+    const pl = planeGeometry(S, P, ballSign);
+    const {ball, hands, shoulder, dir, lenS, inPerPx, hg} = pl;
     const cross=(o,a,b)=>(a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x);
-    const lenH=dist(ball,hands), lenS=dist(ball,shoulder);
-    const sgnShaft=Math.sign(cross(ball,hands,shoulder))||1, sgnSh=Math.sign(cross(ball,shoulder,hands))||1;
+    const shaftEnd = {x:ball.x+dir.x*lenS, y:ball.y+dir.y*lenS};
+    const sgnShaft=Math.sign(cross(ball,shaftEnd,shoulder))||1, sgnSh=Math.sign(cross(ball,shoulder,shaftEnd))||1;
     const aboveShoulderPx = p=> -cross(ball,shoulder,p)*sgnSh/lenS;     // >0: above/outside the shoulder plane
-    const belowShaftPx   = p=> -cross(ball,hands,p)*sgnShaft/lenH;      // >0: under/inside the shaft plane
-    const hipY = mid(A[23],A[24]).y, shY=shoulder.y;
-    let maxAbove=0, maxBelow=0, offs=[];
+    const belowShaftPx   = p=> -cross(ball,shaftEnd,p)*sgnShaft/lenS;  // >0: under/inside the shaft plane
+    const hipY = mid(A[23],A[24]).y, topY = handMid(Tp).y;
+    // Backswing hand path = the plane your hands swung up on. Find where it crossed a given height.
+    const bsPts=[]; for(let j=P.address;j<=P.top;j++) bsPts.push(handMid(S[j]));
+    const backAt = y=>{ // last crossing before the top (ignores waggles at the start)
+      for(let j=bsPts.length-1;j>0;j--){ const a=bsPts[j-1], b=bsPts[j];
+        if((a.y-y)*(b.y-y)<=0 && a.y!==b.y){ const f=(y-a.y)/(b.y-a.y), seg=Math.hypot(b.x-a.x,b.y-a.y)||1;
+          return {x:a.x+(b.x-a.x)*f, y, sin:Math.abs(b.y-a.y)/seg}; } }
+      return null; };
+    // Early-to-mid downswing: from just below the top down to hip height (where "over the top" or "dropping inside" shows)
+    const yLo = topY + 0.2*(hipY-topY);
+    const devs=[]; let visSum=0;
     for(let i=P.top+1;i<P.impact;i++){
-      const h=handMid(S[i]); if(h.y>hipY) continue;   // early/mid downswing: hands above hip height
-      maxAbove=Math.max(maxAbove, aboveShoulderPx(h)); maxBelow=Math.max(maxBelow, belowShaftPx(h));
-      if(h.y>shY){ // compare with backswing at the same hand height
-        let best=null, bd=1e9; for(let j=P.address;j<=P.top;j++){ const b=handMid(S[j]); const d=Math.abs(b.y-h.y); if(d<bd){bd=d;best=b;} }
-        if(best) offs.push((h.x-best.x)*ballSign);
-      }
+      const h=handMid(S[i]); if(h.y<yLo || h.y>hipY) continue;
+      const b=backAt(h.y);
+      let d = b ? (h.x-b.x)*ballSign*Math.max(0.5,b.sin) : 0;           // + = outside (toward the ball) vs the backswing path
+      // leaving the shaft–shoulder zone counts too: above the shoulder plane (beyond where the backswing was) or under the shaft plane
+      const above=aboveShoulderPx(h) - (b ? Math.max(0, aboveShoulderPx(b)) : 0), below=belowShaftPx(h);
+      if(above>0) d=Math.max(d, above); if(below>0) d=Math.min(d, -below);
+      devs.push({i, d:d*inPerPx, h, b, ref:!!b}); visSum += Math.max(S[i][15].v, S[i][16].v);
     }
-    const above=maxAbove/scale*100, below=maxBelow/scale*100, off = offs.length ? median(offs)/scale*100 : 0;
-    // inches: scale pixels with golfer height (nose-to-ankle ≈ 0.89 × height); 1.75 m assumed if not given
-    const hg=golferHeightM(), bhPx=Math.abs(mid(A[27],A[28]).y-A[0].y)||P.bh, inPerPx = 0.89*hg.m/bhPx/0.0254;
-    const outIn=maxAbove*inPerPx, inIn=maxBelow*inPerPx;
-    const degOf = px=>Math.atan2(px, lenS)*180/Math.PI;
+    // How many real (not interpolated) pose samples fell in the downswing?
+    const tTop=state.frames[P.top].t, tImp=state.frames[P.impact].t;
+    const realN = state.liveSamples ? state.liveSamples.filter(t=>t>tTop && t<tImp).length
+                                    : state.frames.slice(P.top+1, P.impact).filter(f=>f.lm).length;
+    const vis = devs.length ? visSum/devs.length : 0, nRef = devs.filter(x=>x.ref).length;
+    let why=null;
+    if(realN<3) why='the downswing was too fast for the tracking frame rate';
+    else if(devs.length<2 || nRef<2) why='the hands were not tracked through the downswing';
+    else if(vis<0.3) why='the hands were hidden or blurred on the way down';
     const TOL=1.0; // inches
-    let planeSay, planeShort;
-    if(outIn>TOL && outIn>=inIn){ planeSay=`${Math.round(outIn)} ${Math.round(outIn)===1?'inch':'inches'} outside the plane at the top of the downswing.`; planeShort=`${outIn.toFixed(1)}″ outside (≈${degOf(maxAbove).toFixed(0)}°)`; }
-    else if(inIn>TOL){ planeSay=`${Math.round(inIn)} ${Math.round(inIn)===1?'inch':'inches'} inside the plane on the downswing.`; planeShort=`${inIn.toFixed(1)}″ inside (≈${degOf(maxBelow).toFixed(0)}°)`; }
-    else { planeSay=`On plane, within ${TOL} inch.`; planeShort='within the zone (±1″)'; }
-    if(off>8 && outIn<=TOL) planeSay += ' Hands moved slightly out toward the ball compared with the backswing.';
-    res.planeSay = planeSay;
-    let s,val,msg,tip;
-    if(outIn>4){ s='red'; val='Over the top'; }
-    else if(outIn>TOL){ s='yellow'; val='Slightly outside'; }
-    else if(inIn>6){ s='yellow'; val='Very inside'; }
-    else if(off>20){ s='yellow'; val='Slightly outside'; }
-    else { s='green'; val = inIn>TOL ? 'Slightly inside' : 'On plane'; }
-    if(s==='green'){ msg='Your hands drop into the zone between the shaft and shoulder planes and return slightly inside the backswing path. That is a classic “from the inside” delivery.'; tip='Keep feeling the hands drop down in transition before the shoulders open.'; }
-    else if(val==='Very inside'){ msg='Your hands drop well under the plane and behind you on the way down. That can lead to pushes, hooks or getting “stuck”.'; tip='Feel your chest keep rotating through impact so the arms don\'t get trapped behind you. Try half-swings with a feeling of the hands working more in front of the chest.'; }
-    else { msg=`Early in the downswing your hands move ${above>5?'above the shoulder plane':'outward toward the ball'} compared with the backswing. That is the over-the-top move behind slices and pulls.`; tip='Start the downswing with the lower body and let the trail elbow drop toward your trail hip. Drill: put a headcover just outside the ball and swing without hitting it.'; }
-    out.push({key:'plane', title:'Swing plane (downswing hand path)', val, s, msg, tip,
-      detail:`Early downswing: ${planeShort} relative to the shaft–shoulder plane zone${hg.given?'':' (inches assume 1.75 m height; enter yours for accuracy)'}. Downswing hands vs backswing path: ${off>=0?'+':''}${off.toFixed(0)}% (+ = toward ball). Max above shoulder plane: ${above.toFixed(0)}%. Ball ${marked?'marked by you':'estimated from '+club.name+' lie; tap “Mark ball” for accuracy'}. Uses the hand path, not the clubhead (the club isn't tracked).`,
-      conf:Math.min(...[15,16].map(k=>Tp[k].v))});
-    res.plane={ball,hands,shoulder,marked,lenHands:lenH,lenSh:lenS};
+    let dev=0, worst=null, s, val, msg, tip, planeShort;
+    if(!why){
+      const ds=devs.map(x=>x.d).sort((a,b)=>a-b), q=f=>ds[Math.min(ds.length-1,Math.max(0,Math.round(f*(ds.length-1))))];
+      const outQ=q(0.75), inQ=q(0.25);            // robust "peak" each way (ignores a single noisy frame)
+      dev = outQ>0 && outQ>=-inQ ? outQ : inQ<0 ? inQ : 0;
+      worst = devs.reduce((m,x)=>Math.abs(x.d-dev)<Math.abs(m.d-dev)?x:m, devs[0]);
+      const n=Math.round(Math.abs(dev)), inch = n===1?'inch':'inches';
+      if(dev>TOL){ res.planeSay=`${n} ${inch} outside the plane${dev>3?', over the top':''}.`; planeShort=`${dev.toFixed(1)}″ outside`; }
+      else if(dev<-TOL){ res.planeSay=`${n} ${inch} inside the plane.`; planeShort=`${(-dev).toFixed(1)}″ inside`; }
+      else { res.planeSay=`On plane, within ${TOL} inch.`; planeShort=`on plane (${dev>=0?'+':''}${dev.toFixed(1)}″)`; }
+      if(dev>3){ s='red'; val=`${dev.toFixed(1)}″ outside`; }
+      else if(dev>TOL){ s='yellow'; val=`${dev.toFixed(1)}″ outside`; }
+      else if(dev<-4){ s='yellow'; val=`${(-dev).toFixed(1)}″ inside`; }
+      else if(dev<-TOL){ s='green'; val=`${(-dev).toFixed(1)}″ inside`; }
+      else { s='green'; val='On plane'; }
+      if(s==='green' && dev>=-TOL){ msg='On the way down your hands return on the same path they went up on. That is an on-plane delivery.'; tip='A touch from the inside (hands slightly under the backswing path) is ideal. Keep feeling the hands drop in transition before the shoulders open.'; }
+      else if(s==='green'){ msg='Your hands drop slightly inside (under) the backswing path on the way down, the classic “from the inside” delivery.'; tip='Keep it: feel the trail elbow work in front of your trail hip as you start down.'; }
+      else if(dev<0){ msg='Your hands drop well under the plane and behind you on the way down. That can lead to pushes, hooks or getting “stuck”.'; tip='Feel your chest keep rotating through impact so the arms don\'t get trapped behind you. Try half-swings with the hands working more in front of the chest.'; }
+      else { msg='Early in the downswing your hands move out toward the ball, outside the path they went back on. That is the over-the-top move behind slices and pulls.'; tip='Start the downswing with the lower body and let the trail elbow drop toward your trail hip. Drill: put a headcover just outside the ball and swing without hitting it.'; }
+    } else {
+      res.planeSay = `Swing plane not measured on this swing: ${why}.`;
+      s='info'; val='Not measured'; planeShort='not measured';
+      msg=`The plane reading needs the hands tracked clearly through the downswing, and ${why}.`;
+      tip='Film down-the-line in good light with your hands visible against the background. A faster tracking rate (Lite pose model, 60 fps camera) helps.';
+    }
+    const deg = Math.atan2(-dir.y, Math.abs(dir.x))*180/Math.PI;
+    out.push({key:'plane', dev, measured:!why, title:'Swing plane (downswing hand path)', val, s, msg, tip, badge: why?'Not measured':undefined, badgeCls: why?'lo':undefined,
+      detail:`Early-to-mid downswing: ${planeShort}, measured from your hand path against the path the hands went back on and the shaft–shoulder plane zone (+ = outside / toward the ball)${hg.given?'':'. Inches assume 1.75 m height; enter yours for accuracy'}. Shaft line ${deg.toFixed(0)}° (${pl.src}). ${pl.marked?'Ball marked by you.':'Ball estimated; tap “Mark ball” or “Adjust shaft line” for accuracy.'} ${realN} tracked frames in the downswing. Uses the hands, not the clubhead (the club isn't tracked).`,
+      conf: why?1:Math.min(1,vis)});
+    res.plane={ball, hands, shoulder, dir, marked:pl.marked, adjusted:pl.adjusted, deg, lenSh:lenS, worst: worst && worst.b ? {h:worst.h, b:worst.b, d:worst.d} : null};
   }
 
   // Estimated club speed from hand angular velocity around the lead shoulder
@@ -1239,7 +1460,7 @@ async function makeThumbs(){
   const P=state.phases; if(!P) return;
   const wasT = video.currentTime;
   const list=[['Address',P.address],['Top',P.top],['Impact',P.impact],['Finish',P.finish]];
-  const box=$('thumbs'); box.innerHTML='';
+  const box=$('thumbs'), made=[];
   const c=document.createElement('canvas'); const r=state.vw/state.vh;
   c.width = r>=1 ? 480 : Math.round(360*r*4/3) ; c.height = Math.round(c.width/r);
   // crop around golfer for nicer thumbs
@@ -1258,8 +1479,9 @@ async function makeThumbs(){
     const b=document.createElement('button'); b.className='thumb'; b.type='button';
     b.innerHTML=`<img alt="${name}" src="${c.toDataURL('image/jpeg',0.85)}"><div><b>${name}</b><span>${state.frames[i].t.toFixed(2)} s</span></div>`;
     b.addEventListener('click',()=>{ video.pause(); video.currentTime=state.frames[i].t; $('stage').scrollIntoView({behavior:'smooth',block:'center'}); });
-    box.appendChild(b);
+    made.push(b);
   }
+  box.replaceChildren(...made);
   state.thumbsReady=true;
   video.currentTime=wasT;
 }
@@ -1287,6 +1509,7 @@ $('chart').addEventListener('click', e=>{
   video.pause(); video.currentTime=state.frames[i].t;
 });
 layoutStage();
+loadSavedSwings();
 </script>
 </body>
 </html>
